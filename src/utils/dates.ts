@@ -14,6 +14,37 @@ export function findFirstAvailableDate(calendarDates: CalendarDate[]): Date {
   return calendarDate?.date ?? toUTC(new Date());
 }
 
+/**
+ * Based on a start date, find the next disabled date
+ *
+ * @export
+ * @param {CalendarDate[]} calendarDates
+ * @param {Date} startDate
+ * @return {*}  {Date[]}
+ */
+export function findNextDisabledDate(
+  calendarDates: CalendarDate[],
+  startDate: Date
+): Date | undefined {
+  const filteredDates = calendarDates
+    .filter(calendar => calendar.date > startDate)
+    .find(calendar => !calendar.can_be_checkin);
+  return filteredDates?.date;
+}
+
+export function getDisabledDatesForSelectedRange({
+  calendarDates,
+  checkoutDate
+}: {
+  calendarDates: CalendarDate[];
+  checkoutDate: Date;
+}): Date[] {
+  const disabledDates = getDisabledDates("checkin")(calendarDates).filter(
+    date => date.getTime() !== checkoutDate.getTime()
+  );
+  return disabledDates;
+}
+
 export function getDisabledDates(disabledFor: "checkin" | "checkout") {
   return function (calendarDates: CalendarDate[]): Date[] {
     const filteredCalendarDates = calendarDates.filter(calendarDate => {
@@ -27,7 +58,7 @@ export function getDisabledDates(disabledFor: "checkin" | "checkout") {
 }
 
 export function getArrayOfMinimumOfNights(calendarDate: CalendarDate): Date[] {
-  const minNights = calendarDate.min_nights;
+  const minNights = calendarDate.min_nights - 1;
   const initialDate = calendarDate.date;
   const dates: Date[] = new Array(minNights);
 

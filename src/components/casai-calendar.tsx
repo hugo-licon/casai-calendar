@@ -6,28 +6,30 @@ import {
   DayContentRendererProps,
   OnChangeProps,
   Range,
-  RangeFocus,
   RangeWithKey
 } from "react-date-range";
 import {
   findFirstAvailableDate,
+  findNextDisabledDate,
   getArrayOfMinimumOfNights,
-  getDisabledDates
+  getDisabledDates,
+  getDisabledDatesForSelectedRange
 } from "utils/dates";
 import { CalendarDate } from "types/calendar-date";
-import { format } from "date-fns";
-import { Popover } from "react-tiny-popover";
+import { format, addDays } from "date-fns";
+import DayCell from "./day-cell";
 
 type Props = {
   calendarDates: CalendarDate[];
 };
 
-enum FocusedRange {
+enum RangeElement {
   StartDate = 0,
-  EndDate = 1
+  EndDate = 1,
+  RangeSelected = 2
 }
 
-const DATE_FORMAT = "yyyy-MM-dd";
+export const DATE_FORMAT = "yyyy-MM-dd";
 
 const DEFAULT_SELECTION = 0;
 
@@ -39,100 +41,18 @@ function arrayToObject(arr: Date[]): Record<string, boolean> {
   }, {});
 }
 
-type DayCellProps = {
-  blockedMinimumNights: Record<string, boolean> | undefined;
-} & DayContentRendererProps;
-
-function DayCell({
-  blockedMinimumNights,
-  className,
-  tabIndex,
-  style,
-  renderPreviewPlaceholder,
-  renderSelectionPlaceholders,
-  date,
-  dayNumberStyles,
-  ...events
-}: DayCellProps) {
-  const [isHoverOpen, setIsHoverOpen] = React.useState<boolean>(false);
-  const key = format(date, DATE_FORMAT);
-  const isBlockedDate = blockedMinimumNights && blockedMinimumNights[key];
-  let color = "black";
-  if (isBlockedDate) {
-    color = "red";
-  }
-  return (
-    <Popover
-      isOpen={isHoverOpen}
-      // positions={["top"]} // if you'd like, you can limit the positions
-      padding={0} // adjust padding here!
-      // reposition={false} // prevents automatic readjustment of content position that keeps your popover content within its parent's bounds
-      onClickOutside={() => setIsHoverOpen(false)} // handle click events outside of the popover/target here!
-      content={(
-        { position, nudgedLeft, nudgedTop } // you can also provide a render function that injects some useful stuff!
-      ) => (
-        <div
-          style={{
-            background: "rgb(255,255,255)",
-            border: "1px solid rgb(235, 235, 235)",
-            boxShadow: "rgb(0 0 0 / 10%) 0px 0px 5px",
-            padding: 8,
-            borderRadius: 8
-          }}
-        >
-          4-nighs minimum
-        </div>
-      )}
-    >
-      <button
-        // {...events}
-        type="button"
-        className={className}
-        {...events}
-        data-testid={key}
-        tabIndex={tabIndex}
-        disabled={isBlockedDate}
-        style={style}
-      >
-        {renderSelectionPlaceholders()}
-        {renderPreviewPlaceholder()}
-        <span
-          className={dayNumberStyles}
-          style={{ color }}
-          onClick={() => {
-            if (isBlockedDate) {
-              setIsHoverOpen(true);
-            }
-          }}
-          onMouseEnter={() => {
-            if (isBlockedDate) {
-              setIsHoverOpen(true);
-            }
-          }}
-          onMouseOut={() => {
-            if (isBlockedDate) {
-              setIsHoverOpen(false);
-            }
-          }}
-        >
-          {date.getDate()}
-        </span>
-      </button>
-    </Popover>
-  );
-}
-
 function CasaiCalendar({ calendarDates }: Props) {
   /**
    * Represents range focus `[range, rangeElement]`. `range` represents the index of the range
    * that's focused and the `rangeElement` the element of the range that's
    * focused, `0` for start date and `1` for end date
    */
-  const [focusedRange, setFocusedRange] = React.useState<RangeFocus>([
-    DEFAULT_SELECTION,
-    FocusedRange.StartDate
-  ]);
+  const [rangeElement, setRangeElement] = React.useState<RangeElement>(
+    RangeElement.StartDate
+  );
   const [minDate, setMinDate] = React.useState<Date>(new Date());
+  const [maxDate, setMaxDate] = React.useState<Date | undefined>(new Date());
+
   const [blockedMinimumNights, setBlockedMinimumNights] =
     React.useState<Record<string, boolean>>();
 
@@ -146,23 +66,36 @@ function CasaiCalendar({ calendarDates }: Props) {
   const [disabledDates, setDisabledDates] = React.useState<Date[]>();
 
   React.useEffect(() => {
-    const [, rangeElement] = focusedRange;
-    if (calendarDates && rangeElement === FocusedRange.StartDate) {
+    if (calendarDates && rangeElement === RangeElement.StartDate) {
       const disabledDatesForCheckin =
         getDisabledDates("checkin")(calendarDates);
       setDisabledDates(disabledDatesForCheckin);
     }
-  }, [calendarDates, focusedRange]);
+  }, [calendarDates, rangeElement]);
 
   React.useEffect(() => {
-    const [, rangeElement] = focusedRange;
-    if (calendarDates && rangeElement === FocusedRange.EndDate) {
+    if (
+      calendarDates &&
+      state.endDate &&
+      rangeElement === RangeElement.RangeSelected
+    ) {
+      const disabledDatesForCheckin = getDisabledDatesForSelectedRange({
+        calendarDates,
+        checkoutDate: state.endDate
+      });
+      setDisabledDates(disabledDatesForCheckin);
+    }
+  }, [calendarDates, rangeElement, state.endDate]);
+
+  React.useEffect(() => {
+    if (calendarDates && rangeElement === RangeElement.EndDate) {
       const disabledDatesForCheckout =
         getDisabledDates("checkout")(calendarDates);
       setDisabledDates(disabledDatesForCheckout);
     }
-  }, [calendarDates, focusedRange]);
+  }, [calendarDates, rangeElement]);
 
+  /* :: find the first available date :: */
   React.useEffect(() => {
     if (calendarDates) {
       const firstAvailableDate = findFirstAvailableDate(calendarDates);
@@ -174,41 +107,50 @@ function CasaiCalendar({ calendarDates }: Props) {
     }
   }, [calendarDates]);
 
+  /* :: Set the min date :: */
   React.useEffect(() => {
-    // const [, rangeElement] = focusedRange;
-    // if (rangeElement === FocusedRange.RangeSelected) {
-    //   const firstAvailableDate = findFirstAvailableDate(calendarDates);
-    //   setMinDate(firstAvailableDate);
-    // } else {
-    //   setMinDate(state.startDate);
-    // }
-  }, [focusedRange, state.startDate, calendarDates]);
+    if (rangeElement === RangeElement.RangeSelected) {
+      const firstAvailableDate = findFirstAvailableDate(calendarDates);
+      setMinDate(firstAvailableDate);
+    } else if (state.startDate) {
+      setMinDate(state.startDate);
+    }
+  }, [state.startDate, calendarDates, rangeElement]);
+
+  /* :: Set the max date :: */
+  React.useEffect(() => {
+    if (rangeElement === RangeElement.EndDate && state.startDate) {
+      const nextDisabledDate = findNextDisabledDate(
+        calendarDates,
+        state.startDate
+      );
+      setMaxDate(nextDisabledDate);
+    } else {
+      const maxDate = addDays(new Date(), 180);
+      setMaxDate(maxDate);
+    }
+  }, [state.startDate, calendarDates, rangeElement]);
 
   function onChange(range: OnChangeProps) {
     const { selection } = range as { selection: RangeWithKey };
-    const [, rangeElement] = focusedRange;
     if (selection.endDate && blockedMinimumNights) {
       const key = format(selection.endDate, DATE_FORMAT);
-      if (rangeElement === FocusedRange.EndDate && blockedMinimumNights[key]) {
+      if (rangeElement === RangeElement.EndDate && blockedMinimumNights[key]) {
         return;
       }
     }
     setState(selection);
-    setFocusedRange(([, rangeElement]) => {
-      if (rangeElement === FocusedRange.StartDate) {
-        return [DEFAULT_SELECTION, FocusedRange.EndDate];
+    setRangeElement(rangeElement => {
+      if (rangeElement === RangeElement.EndDate) {
+        return RangeElement.RangeSelected;
       }
-      // if (rangeElement === FocusedRange.EndDate) {
-      // }
-      return [DEFAULT_SELECTION, FocusedRange.StartDate];
+      return RangeElement.EndDate;
     });
   }
 
   React.useEffect(() => {
-    const [, rangeElement] = focusedRange;
-    if (rangeElement === FocusedRange.EndDate) {
+    if (rangeElement === RangeElement.EndDate) {
       const selectedCalendarDate = calendarDates.find(calendarDate => {
-        // console.log(format(calendarDate.date, "yyyy-MM-dd"));
         if (!state.startDate) return false;
         return (
           format(calendarDate.date, DATE_FORMAT) ===
@@ -220,7 +162,13 @@ function CasaiCalendar({ calendarDates }: Props) {
         setBlockedMinimumNights(arrayToObject(newDisabledDays));
       }
     }
-  }, [calendarDates, focusedRange, state.startDate]);
+  }, [calendarDates, rangeElement, state.startDate]);
+
+  React.useEffect(() => {
+    if (rangeElement === RangeElement.RangeSelected) {
+      setBlockedMinimumNights({});
+    }
+  }, [rangeElement]);
 
   function onResetDates() {
     const firstAvailableDate = findFirstAvailableDate(calendarDates);
@@ -229,25 +177,31 @@ function CasaiCalendar({ calendarDates }: Props) {
       startDate: firstAvailableDate,
       endDate: firstAvailableDate
     }));
-    setFocusedRange([DEFAULT_SELECTION, FocusedRange.StartDate]);
+    setRangeElement(RangeElement.StartDate);
+    setBlockedMinimumNights({});
   }
+
 
   return (
     <>
       <DateRange
-        // editableDateInputs={true}
-        // twoStepChange
         onChange={onChange}
-        focusedRange={focusedRange}
+        focusedRange={[
+          DEFAULT_SELECTION,
+          rangeElement === RangeElement.EndDate ? 1 : 0
+        ]}
         disabledDates={disabledDates}
         showMonthAndYearPickers={false}
-        minDate={state.startDate}
+        minDate={minDate}
+        ariaLabels={{
+          nextButton: "Next month"
+        }}
+        maxDate={maxDate}
         dayContentRenderer={(props: DayContentRendererProps) => {
           return (
             <DayCell {...props} blockedMinimumNights={blockedMinimumNights} />
           );
         }}
-        // moveRangeOnFirstSelection={false}
         ranges={[state]}
       />
       <button onClick={onResetDates}>Reset Dates</button>

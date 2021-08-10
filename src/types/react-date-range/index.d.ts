@@ -56,9 +56,9 @@ declare module "react-date-range" {
 
   export interface Range {
     /** default: today */
-    startDate?: Date | undefined;
+    startDate: Date;
     /** default: today */
-    endDate?: Date | undefined;
+    endDate: Date;
   }
 
   export interface RangeWithKey extends Range {
@@ -133,6 +133,17 @@ declare module "react-date-range" {
     date: Date;
   }
 
+  export interface AriaLabels {
+    dateInput?: {
+      startDate: string;
+      endDate: string;
+    };
+    monthPicker?: string;
+    yearPicker?: string;
+    prevButton?: string;
+    nextButton?: string;
+  }
+
   export interface DateRangeProps extends Range, CommonCalendarProps {
     /** default: enUs from locale. Complete list here https://github.com/Adphorus/react-date-range/blob/next/src/locale/index.js */
     locale?: Locale | undefined;
@@ -200,6 +211,10 @@ declare module "react-date-range" {
     showPreview?: boolean | undefined;
     /** default: */
     onPreviewChange?: ((preview: Preview) => void) | undefined;
+    /** default: **/
+    ariaLabels?: AriaLabels;
+    /** default: false */
+    retainEndDateOnFirstSelection? : boolean | undefined;
     /** default: */
     dayContentRenderer?:
       | ((renderProps: DayContentRendererProps) => void)
@@ -223,8 +238,8 @@ declare module "react-date-range" {
     | "Last 30 Days";
 
   export interface Range {
-    startDate?: Date | undefined;
-    endDate?: Date | undefined;
+    startDate: Date;
+    endDate: Date;
     color?: string | undefined;
     key?: string | undefined;
     autoFocus?: boolean | undefined;
